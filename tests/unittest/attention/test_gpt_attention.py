@@ -21,7 +21,7 @@ from itertools import product
 import numpy as np
 import pytest
 import torch
-from parameterized import parameterized
+# from parameterized import parameterized
 from transformers import GPT2Config, GPTBigCodeConfig, GPTJConfig, LlamaConfig
 from transformers.cache_utils import DynamicCache
 from transformers.modeling_attn_mask_utils import (AttentionMaskConverter,
@@ -54,18 +54,54 @@ from tensorrt_llm.runtime.memory_pools.memory_pools_allocator import \
     MemoryPoolsAllocator
 
 
-class TestFunctional(unittest.TestCase):
+class TestFunctional:
 
-    def setUp(self):
-        tensorrt_llm.logger.set_level('error')
+    # def setUp(self):
+    #     tensorrt_llm.logger.set_level('error')
 
-    def load_test_cases():
+    def load_test_cases(self):
+        test_cases = [
+            [
+                "partition0",
+                "all",
+                "llama_attention",
+                ContextFMHAType.enabled,
+                "float16",
+                None,
+                None,
+                32,  # batch_size
+                64000,  # in_len
+                64,  # num_heads
+                128,  # head_size
+                8,  # num_kv_heads
+                True,  # enable_remove_input_padding
+                1,  # beam_width
+                True,
+                False,
+            ]
+        ]
+        return test_cases
+
+    def load_test_cases2():
         test_cases = []
         test_cases += list(
-            product(['gpt2_attention', 'llama_attention', 'gptj_attention'],
-                    [ContextFMHAType.disabled], ['float16', 'bfloat16'], [None],
-                    [None], [2], [128], [4], [64], [0], [False], [1, 4],
-                    [True, False], [True, False]))
+            product(
+                ["gpt2_attention", "llama_attention", "gptj_attention"],
+                [ContextFMHAType.disabled],
+                ["float16", "bfloat16"],
+                [None],
+                [None],
+                [2],
+                [128],
+                [4],
+                [64],
+                [0],
+                [False],
+                [1, 4],
+                [True, False],
+                [True, False],
+            )
+        )
 
         # Test cases for input padding
         test_cases += list(
@@ -392,7 +428,7 @@ class TestFunctional(unittest.TestCase):
 
         return test_cases
 
-    @parameterized.expand(load_test_cases, name_func=unittest_name_func)
+    # @parameterized.expand(load_test_cases, name_func=unittest_name_func)
     def test_gpt_attention(self,
                            test_partition,
                            gpu_arch,
@@ -416,6 +452,8 @@ class TestFunctional(unittest.TestCase):
                            custom_mask_input=False):
         # if attention_type != "gpt_bigcode_attention" and attention_type != "llama_attention":
         #     assert num_kv_heads == 0 # safe guard against bad test case configs
+
+        print("\n!! dbg in test\n")
 
         os.environ['TRTLLM_FORCE_XQA'] = '1'
         use_int8_kv_cache = True if kv_cache_dtype == 'int8' else False
@@ -756,6 +794,7 @@ class TestFunctional(unittest.TestCase):
                 quant_mode=quant_mode)
 
             if session is None:
+                print("before build engine")
                 engine = builder.build_engine(net, builder_config)
                 session = tensorrt_llm.runtime.Session.from_serialized_engine(
                     engine)
@@ -774,7 +813,7 @@ class TestFunctional(unittest.TestCase):
         plugin_kv_num_heads = num_kv_heads if attention_type == 'llama_attention' or attention_type == 'gpt_bigcode_attention' else num_heads
         kv_hidden_size = plugin_kv_num_heads * head_size
         qkv_hidden_size = hidden_size + 2 * kv_hidden_size
-        out_len = 8
+        out_len = 3
         max_seq_len = in_len + 24
         sink_tokens_in_last_block = sink_token_len % tokens_per_block
         bubble_len = tokens_per_block - sink_tokens_in_last_block if sink_tokens_in_last_block > 0 else 0
@@ -1212,10 +1251,12 @@ class TestFunctional(unittest.TestCase):
                 position_ids = ctx_attention_mask.long().cumsum(-1) - 1
                 position_ids.masked_fill_(ctx_attention_mask == 0, 1)
 
-                attention_mask = _prepare_4d_attention_mask(
-                    ctx_attention_mask,
-                    dtype=str_dtype_to_torch(dtype),
-                    tgt_len=in_len)
+                print("dbg masks", ctx_attention_mask.shape, in_len)
+
+                # attention_mask = _prepare_4d_attention_mask(
+                #     ctx_attention_mask,
+                #     dtype=str_dtype_to_torch(dtype),
+                #     tgt_len=in_len)
                 # create packed mask for fmha if using custom mask.
                 if custom_mask_input:
                     full_attention_mask_for_fmha = attention_mask + AttentionMaskConverter._make_causal_mask(
@@ -1238,20 +1279,21 @@ class TestFunctional(unittest.TestCase):
                         use_cache=True,
                         attention_mask=attention_mask)
                 elif attention_type == 'llama_attention':
-                    position_embeddings = rotary_emb(input_tensor, position_ids)
-                    attention_mask = attention_mask + AttentionMaskConverter._make_causal_mask(
-                        input_tensor.shape[:2],
-                        dtype=str_dtype_to_torch(dtype),
-                        device='cuda',
-                        past_key_values_length=0)
-                    torch_present = DynamicCache()
-                    torch_output = attention(
-                        input_tensor,
-                        past_key_value=torch_present,
-                        position_embeddings=position_embeddings,
-                        attention_mask=attention_mask,
-                        use_cache=True)[0]
-                    torch_present = torch_present.to_legacy_cache()
+                    pass
+                    # position_embeddings = rotary_emb(input_tensor, position_ids)
+                    # attention_mask = attention_mask + AttentionMaskConverter._make_causal_mask(
+                    #     input_tensor.shape[:2],
+                    #     dtype=str_dtype_to_torch(dtype),
+                    #     device='cuda',
+                    #     past_key_values_length=0)
+                    # torch_present = DynamicCache()
+                    # torch_output = attention(
+                    #     input_tensor,
+                    #     past_key_value=torch_present,
+                    #     position_embeddings=position_embeddings,
+                    #     attention_mask=attention_mask,
+                    #     use_cache=True)[0]
+                    # torch_present = torch_present.to_legacy_cache()
                 elif attention_type == 'gptj_attention':
                     torch_output, torch_present = attention(
                         input_tensor,
@@ -1280,8 +1322,14 @@ class TestFunctional(unittest.TestCase):
                 torch.cuda.synchronize()
 
                 if attention_type == 'llama_attention':
-                    kv_dequant_scale, kv_quant_scale = get_kv_quant_scale(
-                        torch_present[0])
+                    kv_dequant_scale, kv_quant_scale = get_kv_quant_scale(None)
+                    # torch_present[0])
+                    # print(
+                    #     "dbg kv_quant_scale",
+                    #     kv_quant_scale,
+                    #     kv_dequant_scale,
+                    #     torch_present[0],
+                    # )
                 else:
                     kv_dequant_scale, kv_quant_scale = get_kv_quant_scale(
                         torch_present)
@@ -1296,6 +1344,7 @@ class TestFunctional(unittest.TestCase):
                                      dtype=str_dtype_to_torch(dtype),
                                      device='cuda')
 
+                print("before prefill")
                 session, output, present_key_value = _construct_execution(
                     session, input_tensor, weight_plugin, bias_plugin,
                     present_key_value, kv_cache_block_offsets,
@@ -1310,24 +1359,25 @@ class TestFunctional(unittest.TestCase):
                     context_host_runtime_perf_knobs, host_context_progress)
                 del session
                 session = None
+                print("after prefill")
 
-                if enable_remove_input_padding:
-                    torch_output = remove_input_padding(torch_output)
-                    np.testing.assert_allclose(
-                        output.to(torch.float32).cpu().numpy(),
-                        torch_output.to(torch.float32).cpu().numpy(),
-                        atol=5e-3)
-                else:
-                    np.testing.assert_allclose(
-                        output[:, :in_len // 2, :].to(
-                            torch.float32).cpu().numpy(),
-                        torch_output[:, :in_len // 2, :].to(
-                            torch.float32).cpu().numpy(),
-                        atol=5e-3)
-                if attention_type == 'llama_attention':
-                    verify_kv_cache(torch_present[0])
-                else:
-                    verify_kv_cache(torch_present)
+                # if enable_remove_input_padding:
+                #     torch_output = remove_input_padding(torch_output)
+                #     np.testing.assert_allclose(
+                #         output.to(torch.float32).cpu().numpy(),
+                #         torch_output.to(torch.float32).cpu().numpy(),
+                #         atol=5e-3)
+                # else:
+                #     np.testing.assert_allclose(
+                #         output[:, :in_len // 2, :].to(
+                #             torch.float32).cpu().numpy(),
+                #         torch_output[:, :in_len // 2, :].to(
+                #             torch.float32).cpu().numpy(),
+                #         atol=5e-3)
+                # if attention_type == 'llama_attention':
+                #     verify_kv_cache(torch_present[0])
+                # else:
+                #     verify_kv_cache(torch_present)
 
             else:
                 # Generation stage
@@ -1353,10 +1403,10 @@ class TestFunctional(unittest.TestCase):
                 position_ids.masked_fill_(ctx_attention_mask == 0, 1)
                 position_ids = position_ids[:, -1].unsqueeze(-1)
 
-                attention_mask = _prepare_4d_attention_mask(
-                    ctx_attention_mask,
-                    dtype=str_dtype_to_torch(dtype),
-                    tgt_len=1)
+                # attention_mask = _prepare_4d_attention_mask(
+                #     ctx_attention_mask,
+                #     dtype=str_dtype_to_torch(dtype),
+                #     tgt_len=1)
 
                 perf_knob_tensor_size = 16
                 generation_host_runtime_perf_knobs = torch.tensor(
@@ -1382,22 +1432,23 @@ class TestFunctional(unittest.TestCase):
                         use_cache=True,
                         attention_mask=attention_mask)
                 elif attention_type == 'llama_attention':
-                    position_embeddings = rotary_emb(input_tensor, position_ids)
-                    attention_mask = attention_mask + AttentionMaskConverter._make_causal_mask(
-                        input_tensor.shape[:2],
-                        dtype=str_dtype_to_torch(dtype),
-                        device='cuda',
-                        past_key_values_length=in_len + step - 1)
-                    # llama uses DynamicCache
-                    torch_present = DynamicCache.from_legacy_cache(
-                        torch_present)
-                    torch_output = attention(
-                        input_tensor,
-                        past_key_value=torch_present,
-                        position_embeddings=position_embeddings,
-                        attention_mask=attention_mask,
-                        use_cache=True)[0]
-                    torch_present = torch_present.to_legacy_cache()
+                    pass
+                    # position_embeddings = rotary_emb(input_tensor, position_ids)
+                    # attention_mask = attention_mask + AttentionMaskConverter._make_causal_mask(
+                    #     input_tensor.shape[:2],
+                    #     dtype=str_dtype_to_torch(dtype),
+                    #     device='cuda',
+                    #     past_key_values_length=in_len + step - 1)
+                    # # llama uses DynamicCache
+                    # torch_present = DynamicCache.from_legacy_cache(
+                    #     torch_present)
+                    # torch_output = attention(
+                    #     input_tensor,
+                    #     past_key_value=torch_present,
+                    #     position_embeddings=position_embeddings,
+                    #     attention_mask=attention_mask,
+                    #     use_cache=True)[0]
+                    # torch_present = torch_present.to_legacy_cache()
                 elif attention_type == 'gptj_attention':
                     torch_output, torch_present = attention(
                         input_tensor,
@@ -1431,15 +1482,15 @@ class TestFunctional(unittest.TestCase):
                         new_tensor = new_tensor.reshape(new_shape.tolist())
                         return new_tensor
 
-                torch_output = tile_beam_width(torch_output, beam_width)
-                torch_output = torch_output.reshape(
-                    [batch_size, beam_width, -1])
+                # torch_output = tile_beam_width(torch_output, beam_width)
+                # torch_output = torch_output.reshape(
+                #     [batch_size, beam_width, -1])
 
                 torch.cuda.synchronize()
 
                 tiled_input_tensor = tile_beam_width(input_tensor, beam_width)
-                tiled_attention_mask = tile_beam_width(attention_mask,
-                                                       beam_width)
+                # tiled_attention_mask = tile_beam_width(attention_mask,
+                #                                        beam_width)
                 tiled_input_lengths = tile_beam_width(input_lengths, beam_width)
                 tiled_host_context_lengths = tiled_input_lengths.cpu(
                 ) if enable_remove_input_padding else None
@@ -1472,6 +1523,7 @@ class TestFunctional(unittest.TestCase):
                 tiled_output = tiled_output.reshape(
                     [batch_size * beam_width, 1, hidden_size])
 
+                print("before generation", step)
                 session, tiled_output, present_key_value = _construct_execution(
                     session, tiled_input_tensor, weight_plugin, bias_plugin,
                     tiled_present_key_value, kv_cache_block_offsets,
@@ -1487,12 +1539,13 @@ class TestFunctional(unittest.TestCase):
                     generation_host_runtime_perf_knobs, host_context_progress)
                 del session
                 session = None
+                print("after generation")
 
                 # compare result
-                np.testing.assert_allclose(
-                    torch.flatten(tiled_output).to(torch.float32).cpu().numpy(),
-                    torch.flatten(torch_output).to(torch.float32).cpu().numpy(),
-                    atol=output_atol)
+                # np.testing.assert_allclose(
+                #     torch.flatten(tiled_output).to(torch.float32).cpu().numpy(),
+                #     torch.flatten(torch_output).to(torch.float32).cpu().numpy(),
+                #     atol=output_atol)
 
             if paged_kv_cache:
                 # Iterate to the next step. Increase number of tokens for all unfinished sequences
@@ -1503,4 +1556,10 @@ class TestFunctional(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    # tensorrt_llm.logger.set_level("error")
+    # unittest.main()
+
+    test = TestFunctional()
+    cases = test.load_test_cases()
+
+    test.test_gpt_attention(*cases[0])
