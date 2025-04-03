@@ -495,6 +495,19 @@ class TestFunctional:
         tokens_per_block = 128 if paged_kv_cache else -1
         streamingllm = sink_token_len > 0
 
+        def print_stats(time_ns):
+            macs = (in_len * head_size * 2) * (num_heads) * batch_size * 2
+            tflops = int(macs // time_ns // 1000)
+            mem_size = (in_len * head_size) * (num_kv_heads) * batch_size * 2
+            mem_size *= torch.finfo(str_dtype_to_torch(dtype)).bits // 8
+            bw_gbs = mem_size // time_ns
+
+            print(
+                f"Time taken: {time_ns // 1000} us, TFLOPS: {tflops}, BW: {bw_gbs} GB/s, tflops: {tflops}, mem_size: {mem_size} bytes"
+            )
+
+        time_list = []
+
         def _construct_execution(
                 session, input_tensor, weight, bias, past_key_value,
                 host_kv_cache_block_offsets, host_kv_cache_pool_pointers,
@@ -826,20 +839,14 @@ class TestFunctional:
                 dtype,
             )
 
-            if step < generation_step:
-                macs = num_heads * (in_len * in_len * head_size) * 2
-                tflops = macs // time_ns // 1000
-                print(f"Time taken: {time_ns // 1000} us, TFLOPS: {tflops}")
-            else:
-                macs = (in_len * head_size * 2) * (num_heads) * batch_size * 2
-                tflops = int(macs // time_ns // 1000)
-                mem_size = (in_len * head_size) * (num_kv_heads) * batch_size * 2
-                mem_size *= torch.finfo(str_dtype_to_torch(dtype)).bits // 8
-                bw_gbs = mem_size // time_ns
+            # if step < generation_step:
+            #     macs = num_heads * (in_len * in_len * head_size) * 2
+            #     tflops = macs // time_ns // 1000
+            #     print(f"Time taken: {time_ns // 1000} us, TFLOPS: {tflops}")
+            # else:
+            print_stats(time_ns)
 
-                print(
-                    f"Time taken: {time_ns // 1000} us, TFLOPS: {tflops}, BW: {bw_gbs} GB/s, tflops: {tflops}, mem_size: {mem_size} bytes"
-                )
+            time_list.append(time_ns)
 
             torch.cuda.synchronize()
             return session, outputs['output'], past_key_value
@@ -852,7 +859,7 @@ class TestFunctional:
         plugin_kv_num_heads = num_kv_heads if attention_type == 'llama_attention' or attention_type == 'gpt_bigcode_attention' else num_heads
         kv_hidden_size = plugin_kv_num_heads * head_size
         qkv_hidden_size = hidden_size + 2 * kv_hidden_size
-        out_len = 6
+        out_len = 11
         max_seq_len = in_len + 24
         sink_tokens_in_last_block = sink_token_len % tokens_per_block
         bubble_len = tokens_per_block - sink_tokens_in_last_block if sink_tokens_in_last_block > 0 else 0
@@ -1247,11 +1254,8 @@ class TestFunctional:
                 )
                 kv_cache_block_offsets = kv_cache_manager.get_block_offsets(
                     beam_width)
-            generation_step = 1
-            if step == generation_step:
-                del session
-                session = None
-            if step < generation_step:
+
+            if step < 1:
                 host_request_types = torch.tensor([0] * batch_size,
                                                   dtype=torch.int32)
                 if paged_kv_cache:
@@ -1388,40 +1392,40 @@ class TestFunctional:
                                      device='cuda')
 
                 print("before prefill", step)
-                session, output, present_key_value = _construct_execution(
-                    session,
-                    input_tensor,
-                    weight_plugin,
-                    bias_plugin,
-                    present_key_value,
-                    kv_cache_block_offsets,
-                    host_kv_cache_pool_pointers,
-                    host_kv_cache_pool_mapping,
-                    attention_packed_mask,
-                    sequence_length,
-                    host_past_key_value_lengths,
-                    host_max_attention_window_sizes,
-                    host_sink_token_length,
-                    input_lengths,
-                    host_context_lengths,
-                    cache_indirection,
-                    host_request_types,
-                    num_heads,
-                    hidden_size,
-                    num_kv_heads,
-                    output,
-                    dtype,
-                    position_embedding_type,
-                    max_context_length,
-                    shape_dict,
-                    kv_quant_scale,
-                    kv_dequant_scale,
-                    configuration,
-                    context_host_runtime_perf_knobs,
-                    host_context_progress,
-                )
-                del session
-                session = None
+                # session, output, present_key_value = _construct_execution(
+                #     session,
+                #     input_tensor,
+                #     weight_plugin,
+                #     bias_plugin,
+                #     present_key_value,
+                #     kv_cache_block_offsets,
+                #     host_kv_cache_pool_pointers,
+                #     host_kv_cache_pool_mapping,
+                #     attention_packed_mask,
+                #     sequence_length,
+                #     host_past_key_value_lengths,
+                #     host_max_attention_window_sizes,
+                #     host_sink_token_length,
+                #     input_lengths,
+                #     host_context_lengths,
+                #     cache_indirection,
+                #     host_request_types,
+                #     num_heads,
+                #     hidden_size,
+                #     num_kv_heads,
+                #     output,
+                #     dtype,
+                #     position_embedding_type,
+                #     max_context_length,
+                #     shape_dict,
+                #     kv_quant_scale,
+                #     kv_dequant_scale,
+                #     configuration,
+                #     context_host_runtime_perf_knobs,
+                #     host_context_progress,
+                # )
+                # del session
+                # session = None
                 print("after prefill\n\n")
 
                 # if enable_remove_input_padding:
@@ -1615,6 +1619,13 @@ class TestFunctional:
                 # And allocate new blocks if needed
                 pools_kv_cache_manager.step([False] * batch_size)
         # assert False, "Force fail"
+
+        print("Time list (microseconds):", [int(time_val / 1000) for time_val in time_list])
+        # the first one is very slow, maybe because of building the engine
+        avg_time = sum(time_list[1:]) / len(time_list[1:])
+        print(f"Average time: {avg_time} us")
+        print_stats(avg_time)
+
         return
 
 
