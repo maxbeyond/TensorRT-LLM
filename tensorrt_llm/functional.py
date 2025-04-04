@@ -5478,6 +5478,8 @@ def gpt_attention(
         The tensor produced by that layer.
     '''
 
+    print("dbg in functional.py gpt_attention")
+
     assert host_request_types is not None
     assert (alibi_slopes is not None) == (position_embedding_type.is_alibi())
     assert (mrope_rotary_cos_sin
@@ -5712,6 +5714,36 @@ def gpt_attention(
     use_logn_scaling = trt.PluginField(
         "use_logn_scaling", np.array(np.int8(use_logn_scaling), dtype=np.int8),
         trt.PluginFieldType.INT8)
+
+    print("in functional.py, host_past_key_value_lengths", host_past_key_value_lengths)
+    print("in functional.py, host_context_lengths", host_context_lengths)
+    # print("in functional.py, semaphores", semaphores)
+    # print("in functional.py, workspaces", workspaces)
+    print("in functional.py, sequence_lengths", sequence_length)
+    print("in functional.py, context_lengths", context_lengths)
+    print("in functional.py, rotary_embedding_inv_freq_cache", rotary_inv_freq)
+    print("in functional.py, rotary_cos_sin", rotary_cos_sin)
+
+    def print_tensor(name, tensor):
+        if hasattr(tensor, "cpu") and hasattr(tensor, "numpy"):
+            print(f"dbg value {name}: {tensor.cpu().numpy()}")
+        else:
+            print(f"dbg value {name}: {tensor}")
+
+    print_tensor("host_past_key_value_lengths", host_past_key_value_lengths)
+    print_tensor("host_context_lengths", host_context_lengths)
+    print_tensor("sequence_lengths", sequence_length)
+    print_tensor("context_lengths", context_lengths)
+    print_tensor("rotary_embedding_inv_freq_cache", rotary_inv_freq)
+    print_tensor("rotary_cos_sin", rotary_cos_sin)
+
+    # host_context_lengths
+    # semaphores
+    # workspaces
+    # sequence_lengths
+    # context_lengths
+    # rotary_embedding_inv_freq_cache
+    # rotary_cos_sin
 
     pfc = trt.PluginFieldCollection([
         layer_idx, nheads, vision_start, vision_length, num_kv_heads, head_size,

@@ -123,6 +123,9 @@ ifeq ($(LOCAL_USER),1)
 endif
 	docker run $(DOCKER_RUN_OPTS) $(DOCKER_RUN_ARGS) \
     		$(GPU_OPTS) \
+		--cap-add=SYS_ADMIN \
+    --privileged=false \
+    --env NVIDIA_DRIVER_CAPABILITIES=all \
     		--volume $(SOURCE_DIR):$(CODE_DIR) \
     		--env "CCACHE_DIR=${CCACHE_DIR}" \
     		--env "CCACHE_BASEDIR=${CODE_DIR}" \

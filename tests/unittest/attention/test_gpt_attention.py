@@ -503,7 +503,7 @@ class TestFunctional:
             bw_gbs = mem_size // time_ns
 
             print(
-                f"Time taken: {time_ns // 1000} us, TFLOPS: {tflops}, BW: {bw_gbs} GB/s, tflops: {tflops}, mem_size: {mem_size} bytes"
+                f"Time taken: {time_ns // 1000} us, TFLOPS: {tflops}, BW: {bw_gbs} GB/s, macs: {macs}, mem_size: {mem_size} bytes"
             )
 
         time_list = []
@@ -701,6 +701,24 @@ class TestFunctional:
                 ) if position_embedding_type.is_mrope() else None
                 mrope_position_deltas = sequence_length_tensor
 
+                # print("dbg in test_gpt_attention.py before gpt_attention")
+
+                # print(
+                #     "dbg in test_gpt_attention.py host_past_key_value_lengths",
+                #     host_past_key_value_lengths,
+                # )
+                # print(
+                #     "dbg in test_gpt_attention.py host_context_lengths",
+                #     host_context_lengths,
+                # )
+                # print("dbg in test_gpt_attention.py sequence_length", sequence_length)
+                # print("dbg in test_gpt_attention.py context_lengths", context_lengths)
+                # print(
+                #     "dbg in test_gpt_attention.py rotary_embedding_inv_freq_cache",
+                #     rotary_inv_freq,
+                # )
+                # print("dbg in test_gpt_attention.py rotary_cos_sin", rotary_cos_sin)
+
                 outputs = tensorrt_llm.functional.gpt_attention(
                     qkv=qkv,
                     attention_packed_mask=attention_packed_mask_tensor,
@@ -746,6 +764,8 @@ class TestFunctional:
                     mrope_position_deltas=mrope_position_deltas,
                     host_runtime_perf_knobs=host_runtime_perf_knobs_tensor,
                     host_context_progress=host_context_progress_tensor)
+
+                print("dbg in test_gpt_attention.py after gpt_attention")
 
                 net._mark_output(outputs[0],
                                  'output',
@@ -859,7 +879,7 @@ class TestFunctional:
         plugin_kv_num_heads = num_kv_heads if attention_type == 'llama_attention' or attention_type == 'gpt_bigcode_attention' else num_heads
         kv_hidden_size = plugin_kv_num_heads * head_size
         qkv_hidden_size = hidden_size + 2 * kv_hidden_size
-        out_len = 4
+        out_len = 10
         max_seq_len = in_len + 24
         sink_tokens_in_last_block = sink_token_len % tokens_per_block
         bubble_len = tokens_per_block - sink_tokens_in_last_block if sink_tokens_in_last_block > 0 else 0
@@ -1327,6 +1347,7 @@ class TestFunctional:
                         attention_mask=attention_mask)
                 elif attention_type == 'llama_attention':
                     pass
+                    # prefill job here
                     # position_embeddings = rotary_emb(input_tensor, position_ids)
                     # attention_mask = attention_mask + AttentionMaskConverter._make_causal_mask(
                     #     input_tensor.shape[:2],
@@ -1499,7 +1520,11 @@ class TestFunctional:
                         use_cache=True,
                         attention_mask=attention_mask)
                 elif attention_type == 'llama_attention':
+                    import pdb
+
+                    pdb.set_trace()
                     pass
+                    # generation job here
                     # position_embeddings = rotary_emb(input_tensor, position_ids)
                     # attention_mask = attention_mask + AttentionMaskConverter._make_causal_mask(
                     #     input_tensor.shape[:2],
@@ -1630,10 +1655,25 @@ class TestFunctional:
 
 
 if __name__ == "__main__":
-    tensorrt_llm.logger.set_level("debug")
+    # tensorrt_llm.logger.set_level("debug")
+    tensorrt_llm.logger.set_level("error")
     # unittest.main()
 
     test = TestFunctional()
     cases = test.load_test_cases()
 
+    # with torch.profiler.profile(
+    #     activities=[
+    #         # torch.profiler.ProfilerActivity.CPU,
+    #         torch.profiler.ProfilerActivity.CUDA,
+    #     ],
+    #     record_shapes=True,
+    #     profile_memory=True,
+    #     with_stack=True,
+    # ) as prof:
+
     test.test_gpt_attention(*cases[0])
+
+    # torch.cuda.synchronize()
+
+    # prof.export_chrome_trace("trt_gpt_test.json")
