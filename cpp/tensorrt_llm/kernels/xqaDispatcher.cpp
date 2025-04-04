@@ -46,6 +46,11 @@ XqaDispatcher::XqaDispatcher(XqaFixedParams fixedParams)
     , mUseTllmGen(tensorrt_llm::common::getSMVersion() == 100)
     , mMultiProcessorCount(getMultiProcessorCount())
 {
+    TLLM_LOG_WARNING("dbg in XqaDispatcher::XqaDispatcher");
+    TLLM_LOG_WARNING("mUseTllmGen: %d", mUseTllmGen);
+    TLLM_LOG_WARNING("mFixedParams.inputDataType: %d", mFixedParams.inputDataType);
+    TLLM_LOG_WARNING("mFixedParams.kvDataType: %d", mFixedParams.kvDataType);
+    TLLM_LOG_WARNING("mFixedParams.outputDataType: %d", mFixedParams.outputDataType);
     if (mUseTllmGen)
     {
         // The preprocessing kernel will convert Q from inputDataType to fp8 if the kv cache dtype is also e4m3.
@@ -62,6 +67,9 @@ XqaDispatcher::XqaDispatcher(XqaFixedParams fixedParams)
 
 void XqaDispatcher::prepare(XQAParams const& params)
 {
+    TLLM_LOG_WARNING("dbg in XqaDispatcher::prepare");
+    TLLM_LOG_WARNING("params %s", params.toString().c_str());
+
     if (!mUseTllmGen)
     {
         if (mDecoderXqaRunner->shouldUse(params, /*forConfigurePlugin=*/true))
@@ -163,6 +171,8 @@ bool XqaDispatcher::shouldUse(XQAParams const& params)
 
 bool XqaDispatcher::isSupported()
 {
+    TLLM_LOG_WARNING("dbg in XqaDispatcher::isSupported");
+
     if (mUseTllmGen)
     {
         // TODO (perkzz): add the support of fp8-kv fp16/bf16-mma fmha.
@@ -222,6 +232,10 @@ bool XqaDispatcher::isSupported()
 template <typename T, typename KVCacheBuffer>
 void XqaDispatcher::runImpl(XQAParams params, KVCacheBuffer const& kv_cache_buffer)
 {
+    TLLM_LOG_WARNING("dbg in XqaDispatcher::runImpl");
+    TLLM_LOG_WARNING("params %s", params.toString().c_str());
+    TLLM_LOG_WARNING("kv_cache_buffer %s", kv_cache_buffer.toString().c_str());
+
     if (mUseTllmGen)
     {
         TLLM_LOG_DEBUG("Running TRTLLM-GEN generation kernel.");
@@ -425,6 +439,9 @@ void XqaDispatcher::runImpl(XQAParams params, KVCacheBuffer const& kv_cache_buff
 
 void XqaDispatcher::run(XQAParams const& params, KVLinearBuffer const& kv_cache_buffer)
 {
+    TLLM_LOG_WARNING("dbg in XqaDispatcher::run, KVLinearBuffer");
+    TLLM_LOG_WARNING("params %s", params.toString().c_str());
+
     TLLM_CHECK_WITH_INFO((mFixedParams.inputDataType == DATA_TYPE_FP16 || mFixedParams.inputDataType == DATA_TYPE_BF16),
         "The input Qkv tensor must be fp16/bf16.");
     if (mFixedParams.inputDataType == DATA_TYPE_FP16)
@@ -439,6 +456,9 @@ void XqaDispatcher::run(XQAParams const& params, KVLinearBuffer const& kv_cache_
 
 void XqaDispatcher::run(XQAParams const& params, KVBlockArray const& kv_cache_buffer)
 {
+    TLLM_LOG_WARNING("dbg in XqaDispatcher::run, KVBlockArray");
+    TLLM_LOG_WARNING("params %s", params.toString().c_str());
+    
     TLLM_CHECK_WITH_INFO((mFixedParams.inputDataType == DATA_TYPE_FP16 || mFixedParams.inputDataType == DATA_TYPE_BF16),
         "The input Qkv tensor must be fp16/bf16.");
     if (mFixedParams.inputDataType == DATA_TYPE_FP16)

@@ -190,6 +190,7 @@ GPTAttentionPluginCommon::GPTAttentionPluginCommon(void const* data, size_t leng
 
 int GPTAttentionPluginCommon::initialize() noexcept
 {
+    TLLM_LOG_WARNING("dbg in GPTAttentionPluginCommon::initialize");
     return AttentionOp::initialize();
 }
 
