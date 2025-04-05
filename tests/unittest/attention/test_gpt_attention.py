@@ -66,9 +66,9 @@ class TestFunctional:
                 "all",
                 "llama_attention",
                 ContextFMHAType.enabled,
-                "float16",
-                None,
-                None,
+                "float16",  # dtype
+                "float16",  # kv_cache_dtype
+                None,  # position_embedding_type
                 32,  # batch_size
                 64000,  # in_len
                 64,  # num_heads
@@ -76,8 +76,8 @@ class TestFunctional:
                 8,  # num_kv_heads
                 True,  # enable_remove_input_padding
                 1,  # beam_width
-                True,
-                False,
+                True,  # paged_kv_cache
+                False,  # fuse_bias
             ]
         ]
         return test_cases
@@ -492,7 +492,7 @@ class TestFunctional:
             # Fixing seed to avoid flakiness in tests with quantization
             torch.manual_seed(42)
 
-        tokens_per_block = 128 if paged_kv_cache else -1
+        tokens_per_block = 64 if paged_kv_cache else -1
         streamingllm = sink_token_len > 0
 
         def print_stats(time_ns):
@@ -879,13 +879,20 @@ class TestFunctional:
         plugin_kv_num_heads = num_kv_heads if attention_type == 'llama_attention' or attention_type == 'gpt_bigcode_attention' else num_heads
         kv_hidden_size = plugin_kv_num_heads * head_size
         qkv_hidden_size = hidden_size + 2 * kv_hidden_size
-        out_len = 10
+        out_len = 4
         max_seq_len = in_len + 24
         sink_tokens_in_last_block = sink_token_len % tokens_per_block
         bubble_len = tokens_per_block - sink_tokens_in_last_block if sink_tokens_in_last_block > 0 else 0
         max_blocks_per_seq = math.ceil(
             (max_seq_len + bubble_len) / tokens_per_block)
         num_blocks = batch_size * beam_width * max_blocks_per_seq
+
+        print("dbg in_len", in_len)
+        print("dbg max_seq_len", max_seq_len)
+        print("dbg tokens_per_block", tokens_per_block)
+        print("dbg max_blocks_per_seq", max_blocks_per_seq)
+        print("dbg num_blocks", num_blocks)
+
         shape_dict = {
             'weight': (hidden_size, qkv_hidden_size),
             'bias': (qkv_hidden_size, ),
@@ -917,6 +924,9 @@ class TestFunctional:
         present_key_value = torch.zeros(shape_dict['past_key_value'],
                                         dtype=torch_kv_cache_dtype,
                                         device='cuda')
+
+        print("dbg present_key_value", present_key_value.shape)
+
         host_kv_cache_pool_pointers = None
         host_kv_cache_pool_mapping = None
         # Init KV cache block manager
@@ -1091,8 +1101,12 @@ class TestFunctional:
         else:
             raise RuntimeError("attention_type not properly set")
 
-        input_lengths = torch.ones(
-            (batch_size, ), dtype=torch.int32, device='cuda') * (in_len // 2)
+        # dbg not sure why // 2
+        input_lengths = torch.ones((batch_size,), dtype=torch.int32, device="cuda") * (
+            in_len
+        )
+        # input_lengths = torch.ones(
+        #     (batch_size, ), dtype=torch.int32, device='cuda') * (in_len // 2)
         host_context_lengths = input_lengths.cpu(
         ) if enable_remove_input_padding else None
         ctx_attention_mask = torch.ones((batch_size, in_len),
@@ -1519,10 +1533,7 @@ class TestFunctional:
                         layer_past=torch_present,
                         use_cache=True,
                         attention_mask=attention_mask)
-                elif attention_type == 'llama_attention':
-                    import pdb
-
-                    pdb.set_trace()
+                elif attention_type == "llama_attention":
                     pass
                     # generation job here
                     # position_embeddings = rotary_emb(input_tensor, position_ids)
